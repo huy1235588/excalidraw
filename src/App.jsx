@@ -18,7 +18,6 @@ function newElement(type, x, y) {
         height: 0,
         isSelected: false
     };
-    generateShape(element);
     return element;
 }
 
@@ -34,12 +33,15 @@ function rotate(x1, y1, x2, y2, angle) {
 
 }
 
+var generator = rough.generator();
+
 function generateShape(element) {
-    var generator = rough.generator();
     if (element.type === "selection") {
         element.draw = (rc, context) => {
-            context.fillStyle = "rgba(0, 255, 10, 1)"
+            const fillStyle = context.fillStyle;
+            context.fillStyle = "rgba(0, 0, 255, 0.10)";
             context.fillRect(element.x, element.y, element.width, element.height);
+            context.fillStyle = fillStyle;
         };
     }
     else if (element.type === "rectangle") {
@@ -93,18 +95,17 @@ function generateShape(element) {
         return;
     }
     else if (element.type === "text") {
-        if (element.text === undefined) {
-            element.text = prompt("What text do you want next, huh?");
-        }
         element.draw = (rc, context) => {
-            context.font = "20px Virgil";
-            const measure = context.measureText(element.text);
-            const height = measure.actualBoundingBoxAscent + measure.actualBoundingBoxDescent;
+            const font = context.font;
+            context.font = element.font;
+            const height = element.measure.actualBoundingBoxAscent +
+                element.measure.actualBoundingBoxDescent;
             context.fillText(
                 element.text,
-                element.y = measure.width / 2,
-                element.y = measure.actualBoundingBoxAscent - height / 2
+                element.x,
+                element.y = 2 * element.measure.actualBoundingBoxAscent - height / 2
             );
+            context.font = font;
         };
     }
     else {
@@ -112,11 +113,50 @@ function generateShape(element) {
     }
 }
 
+
+function setSelection(selection) {
+    // Note: it's a lot harder to do on mouse move because of rounding issues
+    let { x, y, width, height } = selection;
+    if (width < 0) {
+        x += width;
+        width = -width;
+    }
+    if (height < 0) {
+        y += height;
+        height = -height;
+    }
+
+    elements.forEach(element => {
+        element.isSelected =
+            element.type !== "selection" &&
+            x <= element.x &&
+            y <= element.y &&
+            x + width > element.x + element.width &&
+            y + height > element.y + element.height;
+    })
+}
+
 function App() {
 
     const [draggingElement, setDraggingElement] = React.useState(null);
     const [elementType, setElementType] = React.useState("selection");
-    const [selectedElements, setSelectedElements] = React.useState([]);
+
+    const onKeyDown = React.useCallback(event => {
+        if (event.key === "Delete") {
+            for (var i = elements.length - 1; i >= 0; --i) {
+                if (elements[i].isSelected) {
+                    elements.splice(i, 1);
+                }
+            }
+            drawScene();
+        }
+    }, []);
+    React.useEffect(() => {
+        document.addEventListener("keydown", onKeyDown, false);
+        return () => {
+            document.removeEventListener("keydown", onKeyDown, false);
+        };
+    }, [onKeyDown]);
 
     function ElementOption({ type, children }) {
         return (
@@ -132,34 +172,72 @@ function App() {
     }
 
     return (
-        <div className="App">
-            <ElementOption type="rectangle">Rectangle</ElementOption>
-            <ElementOption type="ellipse">Ellipse</ElementOption>
-            <ElementOption type="arrow">Arrow</ElementOption>
-            <ElementOption type="text">Text</ElementOption>
-            <ElementOption type="selection">Selection</ElementOption>
+        <div>
+            {/* If using a component, dragging on the canvas also selects the label text which is annoying.
+          Not sure why that's happening */}
+            {/* Can't use the <ElementOption> form because ElementOption is re-defined
+          on every render, which would blow up and re-create the entire DOM tree,
+          which in addition to being inneficient, messes up with browser text
+          selection */}
+            {ElementOption({ type: "rectangle", children: "Rectangle" })}
+            {ElementOption({ type: "ellipse", children: "Ellipse" })}
+            {ElementOption({ type: "arrow", children: "Arrow" })}
+            {ElementOption({ type: "text", children: "Text" })}
+            {ElementOption({ type: "selection", children: "Selection" })}
 
             <canvas
                 id='canvas'
                 width={window.innerWidth}
-                height={window.innerHeight - 26}
+                height={window.innerHeight}
 
                 onMouseDown={e => {
-                    const element = newElement(
-                        elementType,
-                        e.clientX - e.target.offsetLeft,
-                        e.clientY - e.target.offsetTop
-                    );
+                    const x = e.clientX - e.target.offsetLeft;
+                    const y = e.clientY - e.target.offsetTop;
+                    const element = newElement(elementType, x, y);
+
+                    if (elementType === "text") {
+                        element.text = prompt("What text do you want, bruh?");
+                        element.font = "20px Virgil";
+                        const font = context.font;
+                        context.font = element.font;
+                        element.measure = context.measureText(element.text);
+                        context.font = font;
+                        const height = element.measure.actualBoundingBoxAscent +
+                            element.measure.actualBoundingBoxDescent;
+                        // Center the text
+                        element.x -= element.measure.width / 2;
+                        element.y -= element.measure.actualBoundingBoxAscent;
+                        element.with = element.measure.width;
+                        element.height = height;
+                    }
+
+                    generateShape(element);
+
                     elements.push(element);
-                    setDraggingElement(element);
+                    if (elementType === "text") {
+                        setDraggingElement(null);
+                    }
+                    else {
+                        setDraggingElement(element);
+                    }
                     drawScene();
                 }}
                 onMouseUp={e => {
                     setDraggingElement(null);
                     if (elementType === "selection") {
-                        elements.forEach(element => {
-                            element.isSelected = false;
-                        });
+                        // Remove actual section element
+                        elements.pop();
+                        setSelection(draggingElement);
+
+                        // Note: it's a lot harder to do on mouse move because of rounding issues
+                        if (draggingElement.width < 0) {
+                            draggingElement.x += draggingElement.width;
+                            draggingElement.width = -draggingElement.width;
+                        }
+                        if (draggingElement.height < 0) {
+                            draggingElement.y += draggingElement.height;
+                            draggingElement.height = -draggingElement.height;
+                        }
                     }
                     drawScene();
                 }}
@@ -173,13 +251,7 @@ function App() {
                     generateShape(draggingElement);
 
                     if (elementType === "selection") {
-                        elements.forEach(element => {
-                            element.isSelected =
-                                draggingElement.x <= element.x &&
-                                draggingElement.y <= element.y &&
-                                draggingElement.x + draggingElement.width >= element.x + element.width &&
-                                draggingElement.y + draggingElement.height >= element.y + element.height;
-                        });
+                        setSelection(draggingElement);
                     }
                     drawScene();
                 }}
@@ -189,8 +261,13 @@ function App() {
     );
 }
 
+const rootElement = document.getElementById("root");
+ReactDOM.render(<App />, rootElement);
+const canvas = document.getElementById("canvas")
+const rc = rough.canvas(canvas)
+const context = canvas.getContext("2d");
+
 function drawScene() {
-    const rootElement = document.getElementById("root");
     // rootElement.render(
     //     <React.StrictMode>
     //         <App />
@@ -199,15 +276,13 @@ function drawScene() {
 
     ReactDOM.render(<App />, rootElement);
 
-    const canvas = document.getElementById("canvas")
-    const rc = rough.canvas(canvas)
-    const context = canvas.getContext("2d");
     context.clearRect(0, 0, canvas.width, canvas.height);
 
     elements.forEach(element => {
         element.draw(rc, context);
         if (element.isSelected) {
             const margin = 4;
+            const lineDash = context.getLineDash();
             context.setLineDash([8, 4]);
             context.strokeRect(
                 element.x - margin,
@@ -215,7 +290,7 @@ function drawScene() {
                 element.width + margin * 2,
                 element.height + margin * 2
             );
-            context.setLineDash([]);
+            context.setLineDash(lineDash);
         }
     });
 }
