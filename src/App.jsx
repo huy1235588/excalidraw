@@ -1,11 +1,9 @@
 import React from 'react';
 import ReactDOM from "react-dom";
-import logo from './logo.svg';
+
 import './App.css';
 
-import rough from "roughjs";
-
-// import ElementOption from "./components/ElementOption"
+import rough from "roughjs/bin/rough";
 
 var elements = []
 
@@ -14,7 +12,7 @@ function newElement(type, x, y) {
         type: type,
         x: x,
         y: y,
-        with: 0,
+        width: 0,
         height: 0,
         isSelected: false
     };
@@ -29,7 +27,7 @@ function rotate(x1, y1, x2, y2, angle) {
     return [
         (x1 - x2) * Math.cos(angle) - (y1 - y2) * Math.sin(angle) + x2,
         (x1 - x2) * Math.sin(angle) + (y1 - y2) * Math.cos(angle) + y2
-    ]
+    ];
 
 }
 
@@ -72,25 +70,25 @@ function generateShape(element) {
         const x2 = element.x + element.width;
         const y2 = element.y + element.height;
 
-        const size = 30; //pixels
+        const size = 30; // pixels
         const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-        // Scale down the arrow until we hit a certain size so that doesn't look weird?
+        // Scale down the arrow until we hit a certain size so that it doesn't look weird
         const minSize = Math.min(size, distance / 2);
         const xs = x2 - ((x2 - x1) / distance) * minSize;
         const ys = y2 - ((y2 - y1) / distance) * minSize;
 
         const angle = 20; //degrees
-        const [x3, y3] = rotate(xs, ys, x2, y2, (-angle * Math.PI) / 100);
-        const [x4, y4] = rotate(xs, ys, x2, y2, (angle * Math.PI) / 100);
+        const [x3, y3] = rotate(xs, ys, x2, y2, (-angle * Math.PI) / 180);
+        const [x4, y4] = rotate(xs, ys, x2, y2, (angle * Math.PI) / 180);
 
         const shapes = [
             generator.line(x1, y1, x2, y2),
             generator.line(x3, y3, x2, y2),
             generator.line(x4, y4, x2, y2)
-        ]
+        ];
 
         element.draw = (rc, context) => {
-            shapes.forEach(shapes => rc.draw(shapes));
+            shapes.forEach(shape => rc.draw(shape));
         };
         return;
     }
@@ -103,7 +101,7 @@ function generateShape(element) {
             context.fillText(
                 element.text,
                 element.x,
-                element.y = 2 * element.measure.actualBoundingBoxAscent - height / 2
+                element.y + 2 * element.measure.actualBoundingBoxAscent - height / 2
             );
             context.font = font;
         };
@@ -131,15 +129,16 @@ function setSelection(selection) {
             element.type !== "selection" &&
             x <= element.x &&
             y <= element.y &&
-            x + width > element.x + element.width &&
-            y + height > element.y + element.height;
-    })
+            x + width >= element.x + element.width &&
+            y + height >= element.y + element.height;
+    });
 }
 
 function App() {
 
     const [draggingElement, setDraggingElement] = React.useState(null);
     const [elementType, setElementType] = React.useState("selection");
+    const [canvasContext, setCanvasContext] = React.useState(null);
 
     const onKeyDown = React.useCallback(event => {
         if (event.key === "Delete") {
@@ -151,6 +150,7 @@ function App() {
             drawScene();
         }
     }, []);
+
     React.useEffect(() => {
         document.addEventListener("keydown", onKeyDown, false);
         return () => {
@@ -170,6 +170,44 @@ function App() {
             </label>
         );
     }
+    // Moved canvas and context initialization to a useEffect to ensure 
+    // they are set after the component is mounted.
+    React.useEffect(() => {
+        const canvas = document.getElementById("canvas");
+        if (canvas) {
+            const context = canvas.getContext("2d");
+            setCanvasContext(context);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        drawScene();
+    }, [canvasContext]);
+
+    function drawScene() {
+        if (!canvasContext) return;
+
+        const canvas = document.getElementById("canvas");
+        const rc = rough.canvas(canvas);
+
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+
+        elements.forEach(element => {
+            element.draw(rc, canvasContext);
+            if (element.isSelected) {
+                const margin = 4;
+                const lineDash = canvasContext.getLineDash();
+                canvasContext.setLineDash([8, 4]);
+                canvasContext.strokeRect(
+                    element.x - margin,
+                    element.y - margin,
+                    element.width + margin * 2,
+                    element.height + margin * 2
+                );
+                canvasContext.setLineDash(lineDash);
+            }
+        });
+    }
 
     return (
         <div>
@@ -188,7 +226,7 @@ function App() {
             <canvas
                 id='canvas'
                 width={window.innerWidth}
-                height={window.innerHeight}
+                height={window.innerHeight - 26}
 
                 onMouseDown={e => {
                     const x = e.clientX - e.target.offsetLeft;
@@ -198,21 +236,20 @@ function App() {
                     if (elementType === "text") {
                         element.text = prompt("What text do you want, bruh?");
                         element.font = "20px Virgil";
-                        const font = context.font;
-                        context.font = element.font;
-                        element.measure = context.measureText(element.text);
-                        context.font = font;
+                        const font = canvasContext.font;
+                        canvasContext.font = element.font;
+                        element.measure = canvasContext.measureText(element.text);
+                        canvasContext.font = font;
                         const height = element.measure.actualBoundingBoxAscent +
                             element.measure.actualBoundingBoxDescent;
                         // Center the text
                         element.x -= element.measure.width / 2;
                         element.y -= element.measure.actualBoundingBoxAscent;
-                        element.with = element.measure.width;
+                        element.width = element.measure.width;
                         element.height = height;
                     }
 
                     generateShape(element);
-
                     elements.push(element);
                     if (elementType === "text") {
                         setDraggingElement(null);
@@ -225,19 +262,19 @@ function App() {
                 onMouseUp={e => {
                     setDraggingElement(null);
                     if (elementType === "selection") {
-                        // Remove actual section element
+                        // Remove actual selection element
                         elements.pop();
                         setSelection(draggingElement);
-
-                        // Note: it's a lot harder to do on mouse move because of rounding issues
-                        if (draggingElement.width < 0) {
-                            draggingElement.x += draggingElement.width;
-                            draggingElement.width = -draggingElement.width;
-                        }
-                        if (draggingElement.height < 0) {
-                            draggingElement.y += draggingElement.height;
-                            draggingElement.height = -draggingElement.height;
-                        }
+                    }
+                    // Fix up negative width and height when dragging from right to left
+                    // Note: it's a lot harder to do on mouse move because of rounding issues
+                    if (draggingElement.width < 0) {
+                        draggingElement.x += draggingElement.width;
+                        draggingElement.width = -draggingElement.width;
+                    }
+                    if (draggingElement.height < 0) {
+                        draggingElement.y += draggingElement.height;
+                        draggingElement.height = -draggingElement.height;
                     }
                     drawScene();
                 }}
@@ -246,8 +283,9 @@ function App() {
                     let width = e.clientX - e.target.offsetLeft - draggingElement.x;
                     let height = e.clientY - e.target.offsetTop - draggingElement.y;
                     draggingElement.width = width;
-                    // Make a perfect square or cirle when shift is enable
+                    // Make a perfect square or circle when shift is enabled
                     draggingElement.height = e.shiftKey ? width : height;
+
                     generateShape(draggingElement);
 
                     if (elementType === "selection") {
@@ -261,39 +299,8 @@ function App() {
     );
 }
 
-const rootElement = document.getElementById("root");
-ReactDOM.render(<App />, rootElement);
-const canvas = document.getElementById("canvas")
-const rc = rough.canvas(canvas)
-const context = canvas.getContext("2d");
-
-function drawScene() {
-    // rootElement.render(
-    //     <React.StrictMode>
-    //         <App />
-    //     </React.StrictMode>
-    // )
-
-    ReactDOM.render(<App />, rootElement);
-
-    context.clearRect(0, 0, canvas.width, canvas.height);
-
-    elements.forEach(element => {
-        element.draw(rc, context);
-        if (element.isSelected) {
-            const margin = 4;
-            const lineDash = context.getLineDash();
-            context.setLineDash([8, 4]);
-            context.strokeRect(
-                element.x - margin,
-                element.y - margin,
-                element.width + margin * 2,
-                element.height + margin * 2
-            );
-            context.setLineDash(lineDash);
-        }
-    });
-}
-// drawScene();
+// const rootElement = document.getElementById("root");
+// const root = ReactDOM.createRoot(rootElement);
+// root.render(<App />);
 
 export default App;
