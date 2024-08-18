@@ -11,3 +11,23 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+.exportWrapper {
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+  }
+  .exportWrapper label {
+    display: flex;
+    align-items: center;
+    margin: 0 5px;
+  }
+  
+  .exportWrapper button {
+    margin-right: 10px;
+  }
+  
+  .exportWrapper input[type="number"] {
+    width: 40px;
+    padding: 2px;
+    margin-left: 10px;
+  } 

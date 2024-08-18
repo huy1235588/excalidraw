@@ -1,11 +1,9 @@
-import React from 'react';
+import React from "react";
 import ReactDOM from "react-dom";
-
-import './index.css';
-// import { App } from './App';
-import reportWebVitals from './reportWebVitals';
 import rough from "roughjs/bin/rough";
 import { RoughCanvas } from "roughjs/bin/canvas";
+
+import "./App.css";
 
 type ExcaliburElement = ReturnType<typeof newElement>;
 type ExcaliburTextElement = ExcaliburElement & {
@@ -129,8 +127,8 @@ function exportAsPNG({
 
 function rotate(
     x1: number,
-    y1: number,
     x2: number,
+    y1: number,
     y2: number,
     angle: number
 ) {
@@ -290,7 +288,7 @@ type AppState = {
     exportPadding: number;
 }
 
-class App extends React.Component<{}, AppState> {
+export class App extends React.Component<{}, AppState> {
     public componentDidMount() {
         document.addEventListener("keydown", this.onKeyDown, false);
     }
@@ -613,8 +611,3 @@ function drawScene() {
 }
 
 drawScene();
-
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();
